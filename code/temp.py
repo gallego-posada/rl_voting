@@ -6,14 +6,13 @@ import matplotlib.pyplot as plt
 import os
 import numpy as np
 from voting import *
-import pylab 
 
 try:
     xrange = xrange
 except:
     xrange = range
 
-RENDER = 0
+RENDER = 1
 
 def discount_rewards(r):
     """ take 1D float array of rewards and compute discounted reward """
@@ -230,7 +229,7 @@ if __name__ == "__main__":
         #TODO: ADD SOME NOISE TO THE OBSERVATIONS
 
         # Possible voting rules: plurality, borda, hundred_points, copeland
-        voting_rule = copeland
+        voting_rule = plurality
 
         # Load all networks
         networks = []
@@ -260,8 +259,8 @@ if __name__ == "__main__":
                 # Just use one agent
                 if (test_alone_index != -1) :
                     a_dist = networks[test_alone_index].action(observation)
-                    a = np.random.choice(len(a_dist),1,p = a_dist)
-                    action = a[0]
+                    a = np.random.choice(a_dist[0],p = a_dist[0])
+                    action = np.argmax(a_dist == a)
 
                 # Actually vote
                 else:
@@ -283,8 +282,5 @@ if __name__ == "__main__":
                     reward_sum = 0
                     env.reset()
             env.render(close=True)
-            x = np.linspace(1, total_episodes, num=total_episodes)
-            pylab.plot(x,all_rewards)
-            pylab.xlim(0,total_episodes)
-            pylab.ylim(0,500)
-            pylab.show()
+            plt.plot(all_rewards)
+            plt.show
