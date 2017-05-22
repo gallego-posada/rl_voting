@@ -236,8 +236,6 @@ if __name__ == "__main__":
         networks = []
         all_rewards=[]
 
-        voting_rule = plurality
-
         for i in range(0,len(all_architecures)):
             for j in range(0,nb_model):
                 networks.append(load(state_dim,action_dim,all_architecures[i],all_activations[i],str(j)))
@@ -267,7 +265,6 @@ if __name__ == "__main__":
 
                 # Actually vote
                 else:
-
                     Q_function_list= []
                     for i in range(len(networks)):
                             Q_function_list.append(networks[i].action(observation))
