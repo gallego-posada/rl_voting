@@ -319,7 +319,7 @@ if __name__ == "__main__":
         #hyperparameters
         total_episodes = 200
         #0:Global noise changing every episods 1: Noise per networks changing every episods  2:Global fixed noise 3:Noise per network fixed 
-        noise_type=1 
+        noise_type=2 
         noise_sigma=0.3
 
         # Load all networks
@@ -332,6 +332,7 @@ if __name__ == "__main__":
             for j in range(0,nb_model):
                 networks.append(load(state_dim,action_dim,all_architecures[i],all_activations[i],str(j)))
         for k in range(len(voting_rules)+len(networks)):
+            print(str(k)+'/'+str(len(voting_rules)+len(networks)))
             if(k<len(voting_rules)):
                 test_alone_index=-1
                 voting_rule=voting_rules[k]
@@ -354,12 +355,11 @@ if __name__ == "__main__":
                 observation = env.reset()
             
                 #initialize the noise if needed 
-                if(noise_type==3):
+                if(noise_type==2):
                     fixed_global_noise= np.random.normal(0.0, noise_sigma, size=observation.shape)
-                if(noise_type==4):
-                        for i in range(0,len(all_architecures)):
-                            for j in range(0,nb_model):
-                                fixed_network_noise.append(np.random.normal(0.0, noise_sigma, size=observation.shape))
+                if(noise_type==3):
+                        for i in range(0,len(networks)):
+                            fixed_network_noise.append(np.random.normal(0.0, noise_sigma, size=observation.shape))
                 eps_num = 0
                 reward_sum = 0
 
