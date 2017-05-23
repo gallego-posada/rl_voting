@@ -1,0 +1,7 @@
+This file was manually written 
+state_dim = 4
+action_dim = 11
+all_architecures = [[3],[5],[10],[3,3],[5,5]]
+all_activations = [[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh]]
+nb_model = 2
+total_episodes = 1000

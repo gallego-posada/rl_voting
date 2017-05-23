@@ -62,7 +62,7 @@ class Net(object):
         self.saver = tf.train.Saver()
         self.sess = tf.Session()
 
-    def train(self, total_episodes = 5000, max_ep = 999, update_frequency = 5,saveModel=True):
+    def train(self, total_episodes = 5000, max_ep = 999, update_frequency = 5, saveModel = True):
 
         init = tf.global_variables_initializer()
 
@@ -86,8 +86,14 @@ class Net(object):
 
                 for j in range(max_ep):
 
-                    if (len(total_reward) > 100 and np.mean(total_reward[-100:]) > 300) and RENDER>0:
-                        env.render()
+                    if (len(total_reward) > 100 and np.mean(total_reward[-100:]) > 300):
+                        print("Avg reward goal achieved. Stopping.")
+                        # Increase episode number to break outer loop
+                        i  = total_episodes + 1
+                        break
+
+                        if RENDER > 0:
+                            env.render()
 
                     a_dist = self.action(observation)
                     a = np.random.choice(len(a_dist),1,p = a_dist)
@@ -123,47 +129,20 @@ class Net(object):
                 #Update our running tally of scores.
                 if i % 100 == 0 and len(total_reward) >= 100:
                     print("Avg reward: %f" % np.mean(total_reward[-100:]))
+
+                # Increase episode number
                 i += 1
+
 			#save model
             if saveModel:
                 if not os.path.exists(self.folder_name):
                     os.makedirs(self.folder_name)
                 self.saver.save(sess, self.file_name)
 
-
     def action(self, state_obs):
         #Probabilistically pick an action given our network outputs.
         a_dist = self.sess.run(self.output,feed_dict={self.state_in:[state_obs]})
-        return a_dist[0]
-
-    def run(self, total_episodes = 100):
-
-        # Launch the tensorflow graph
-        with self.sess as sess:
-
-            # Obtain an initial observation of the environment
-            observation = env.reset()
-
-            eps_num = 0
-            reward_sum = 0
-
-            while eps_num < total_episodes:
-
-                # Render according to flag
-                if RENDER > 0:
-                    env.render()
-
-                action = self.action(observation)
-
-                observation, reward, done, _ = env.step(action)
-
-                reward_sum += reward
-                if done:
-                    eps_num += 1
-                    print ("Reward for this episode was:",reward_sum)
-                    reward_sum = 0
-                    env.reset()
-            env.render(close=True)
+        return a_dist[0] #This was a list with a list inside
 
     def load_network(self, sess, path):
         t_vars = tf.trainable_variables()
@@ -189,12 +168,12 @@ def load(state_dim, action_dim, architecture, activations, id):
 def train_agents(state_dim, action_dim, all_architecures, all_activations, nb_model, total_episodes):
     for j in range (0,nb_model):
         for i in range(0,len(all_architecures)):
-            print(str(j)+'_'+str(i))
+            print("Agent number: " + str(j)+'_'+str(i))
             #Create an agent, train it and save it
             agent = Net(1e-2, state_dim, action_dim, all_architecures[i], all_activations[i],str(j))
             agent.train(total_episodes = total_episodes)
 
-def noise_obs(sigma_frac, observation,fixed_noise=None):
+def noise_obs(sigma_frac, observation,fixed_noise = None):
     # Covariance matrix
     if (fixed_noise is not None):
         return observation + fixed_noise
@@ -202,78 +181,96 @@ def noise_obs(sigma_frac, observation,fixed_noise=None):
         comp_std = sigma_frac * np.diag(np.array([ 0.50549634,  0.29165111,  0.03309178,  0.18741141]))**2
         return observation + np.random.multivariate_normal(np.zeros(len(comp_std)), comp_std)
 
-def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone_index, noise_type):
+def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone_index, noise_type, eps_length = 999):
+
     all_rewards = []
 
     # Launch the tensorflow graph
     with tf.Session() as sess:
 
-        # Obtain an initial observation of the environment
+        # Current episode counter
+        eps_num = 0
+        #Precompute fixed noise (noise_type= -1 or 2 or 3) 
+        #-1: No noise
+        #0: Global noise changing every episods, fixed every timestep
+        #1: Noise per networks changing every episods, fixed every timestep
+        #2: Global fixed noise: fixed every episod and every timestep
+        #3: Noise per network fixed: fixed every episod and every timestep
+
+        #Computing the fixed noise (fixed with respect to the episods and the time step): this is as if agents had a blurry version of the world 
+        fixed_noise = []
         observation = env.reset()
 
-        eps_num = 0
-        reward_sum = 0
-
-        #Precompute fixed noise (noise_type= -1 or 2 or 3)
-        fixed_noise=[]
-        if(noise_type==1):
-            fixed_noise=None
         for i in range(len(networks)):
             if(noise_type==-1):
+                #Noise is null
                 fixed_noise.append(0)
             elif(noise_type==2):
+                #Noise is the same for all networks
                 if(i==0):
                     fixed_noise.append(noise_obs(sigma_frac, 0*observation))
                 else:
                     fixed_noise.append(fixed_noise[0])
             elif(noise_type==3):
+                #Noise is different per networks
                 fixed_noise.append(noise_obs(sigma_frac, 0*observation))
 
+
         while eps_num < total_episodes:
-            # Render according to flag
-            if RENDER > 0:
-                env.render()
-            if(noise_type==0):
+
+            # Obtain an initial observation of the environment
+            observation = env.reset()
+
+            # Accumulates the reward for the current episode
+            reward_sum = 0
+        
+            #Computing the noise that changes every episod (but that is the same for every timestep)
+            if (noise_type == 0):
+                #Noise is the same for all networks
+                if(i==0):
+                    fixed_noise.append(noise_obs(sigma_frac, 0*observation))
+                else:
+                    fixed_noise.append(fixed_noise[0])
+            if (noise_type == 1):
+                #Noise is different per networks
                 for i in range(len(networks)):
                     fixed_noise.append(noise_obs(sigma_frac, 0*observation))
+            for time_step in range(eps_length):
 
-            # Just use one agent
-            if (test_alone_index != -1) :
-                curr_obs = noise_obs(sigma_frac, observation)
-                a_dist = networks[test_alone_index].action(curr_obs)
-                a = np.random.choice(len(a_dist), 1, p = a_dist)
-                action = a[0]
+                # Render according to flag
+                if RENDER > 0:
+                    env.render()
 
-            # Actually vote
-            else:
-                Q_function_list= []
-                for i in range(len(networks)):
-                    curr_obs = noise_obs(sigma_frac, observation)
-                    Q_function_list.append(networks[i].action(curr_obs))
+                # Just use one agent
+                if (test_alone_index != -1) :
+                    curr_obs = noise_obs(sigma_frac, observation,fixed_noise[0])
+                    a_dist = networks[test_alone_index].action(curr_obs)
+                    a = np.random.choice(len(a_dist), 1, p = a_dist)
+                    action = a[0]
+                # Actually vote
+                else:
+                    Q_function_list= []
+                    for i in range(len(networks)):
+                        curr_obs = noise_obs(sigma_frac, observation,fixed_noise[i])
+                        Q_function_list.append(networks[i].action(curr_obs))
 
-                # Get the index of the action
-                action = int(voting_rule(np.array(Q_function_list)))
+                    # Get the index of the action
+                    action = int(voting_rule(np.array(Q_function_list)))
 
-            # Execute selected action
-            observation, reward, done, _ = env.step(action)
+                # Execute selected action
+                observation, reward, done, _ = env.step(action)
 
-            reward_sum += reward
+                reward_sum += reward
 
-            if done:
-                eps_num += 1
-                print ("Reward for this episode was:",reward_sum)
-                all_rewards.append(reward_sum)
-                reward_sum = 0
-                env.reset()
+                if done or (time_step == eps_length-1):
+                    eps_num += 1
+                    print ("Reward for this episode was:",reward_sum)
+                    all_rewards.append(reward_sum)
+                    break
 
-        env.render(close=True)
+            env.render(close=True)
 
     return all_rewards
-        # plt.plot(range(1, len(all_rewards) + 1), all_rewards)
-        # plt.xlim(0,total_episodes)
-        # plt.ylim(0,500)
-        # plt.savefig('plots/' + voting_rule.__name__ + '.png')
-        # plt.show()
 
 def mean_confidence_interval(data, confidence=0.95):
     # Author: https://stackoverflow.com/questions/15033511/compute-a-confidence-interval-from-sample-data
@@ -308,22 +305,24 @@ if __name__ == "__main__":
         train_agents(state_dim, action_dim, all_architecures, all_activations, nb_model, total_episodes = 1000)
 
     if TEST:
-        #============= HYPERPARMETERS ===================
+
+        # ============= HYPERPARMETERS ===================
         #-1: No noise
         #0: Global noise changing every episods
         #1: Noise per networks changing every episods
         #2: Global fixed noise
         #3: Noise per network fixed
-        noise_type=1;
+        noise_type = 3
         sigma_frac = 20
-        test_alone_index = -1 #index of the network to be tested alone, without voting rule, -1 for none
-        total_episodes = 100
-        #============= END HYPERPARMETERS ===================
+        test_alone_index = 8 #index of the network to be tested alone from 0 to 9 , without voting rule, -1 for all networks that vote 
+        total_episodes = 3 #default 100
         all_rules = [plurality, borda, hundred_points, copeland]
+        eps_len=200 #default 999
+        # ============= END HYPERPARMETERS ===================
 
-        #Optimize the testing
-        if(test_alone_index>-1):
-            all_rules=[plurality]
+        # Optimize the testing
+        if (test_alone_index > -1) :
+            all_rules = [plurality]
 
         # Load all networks
         networks = []
@@ -335,7 +334,7 @@ if __name__ == "__main__":
         list_rewards = []
         for voting_rule in all_rules:
             print("Rule: %s" % voting_rule.__name__)
-            list_rewards.append(run_simulation(voting_rule, networks, sigma_frac, total_episodes,test_alone_index,noise_type))
+            list_rewards.append(run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone_index, noise_type, eps_length = eps_len))
 
         # Plot results, print confidence intervals
         print('\nConfidence Intervals\n')
