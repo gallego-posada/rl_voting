@@ -229,7 +229,7 @@ def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone
             elif(noise_type==3):
                 fixed_noise.append(noise_obs(sigma_frac, 0*observation))
 
-        while eps_num < 500:
+        while eps_num < total_episodes:
             # Render according to flag
             if RENDER > 0:
                 env.render()
@@ -305,7 +305,7 @@ if __name__ == "__main__":
     nb_model = 2
 
     if TRAIN:
-        train_agents(state_dim, action_dim, all_architecures, all_activations, nb_model, total_episodes = 500)
+        train_agents(state_dim, action_dim, all_architecures, all_activations, nb_model, total_episodes = 1000)
 
     if TEST:
         #============= HYPERPARMETERS ===================
