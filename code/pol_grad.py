@@ -95,7 +95,9 @@ class Net(object):
                     if (len(total_reward) > 100 and np.mean(total_reward[-100:]) > 300) and RENDER>0:
                         env.render()
 
-                    action = self.action(observation)
+                    a_dist = self.action(observation)
+                    a = np.random.choice(len(a_dist),1,p = a_dist)
+                    action = a[0]
 
                     # Execute action and store observation and reward
                     new_obs, rwd, done, _ = env.step(action)
@@ -190,9 +192,9 @@ if __name__ == "__main__":
     # Clear TF graph
     tf.reset_default_graph()
 
-    TRAIN = False
+    TRAIN = True
     TEST = False
-    GENERATE_GRAPH = True
+    GENERATE_GRAPH = False
 
     # Create agent
     if(TRAIN):
@@ -217,7 +219,7 @@ if __name__ == "__main__":
                 print(str(j)+'_'+str(i))
                 #Create an agent, train it and save it
                 agent = Net(1e-2, state_dim, action_dim, all_architecures[i], all_activations[i],str(j))
-                agent.train()
+                agent.train( total_episodes = 500, max_ep = 100,update_frequency = 5,saveModel=True)
     elif(TEST):
         state_dim = 4
         action_dim = 11
@@ -319,7 +321,7 @@ if __name__ == "__main__":
         #hyperparameters
         total_episodes = 200
         #0:Global noise changing every episods 1: Noise per networks changing every episods  2:Global fixed noise 3:Noise per network fixed 
-        noise_type=2 
+        noise_type=-1 
         noise_sigma=0.3
 
         # Load all networks
