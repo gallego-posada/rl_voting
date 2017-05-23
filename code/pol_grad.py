@@ -1,28 +1,22 @@
+# Imports
+import os
+import datetime
+import scipy as sp
+import scipy.stats
+import numpy as np
+import matplotlib.pyplot as plt
+import gym
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-import numpy as np
-import gym
-import matplotlib.pyplot as plt
-import os
-import numpy as np
 from voting import *
-import pylab 
 
+plt.set_cmap('hot')
+
+# Python 2 and 3 compatibility
 try:
     xrange = xrange
 except:
     xrange = range
-
-RENDER = 0
-
-def discount_rewards(r):
-    """ take 1D float array of rewards and compute discounted reward """
-    discounted_r = np.zeros_like(r)
-    running_add = 0
-    for t in reversed(xrange(0, r.size)):
-        running_add = running_add * gamma + r[t]
-        discounted_r[t] = running_add
-    return discounted_r
 
 class Net(object):
 
@@ -178,10 +172,118 @@ class Net(object):
             new_saver = tf.train.Saver(t_vars)
             new_saver.restore(sess, tf.train.latest_checkpoint(path))
 
+def discount_rewards(r):
+    """ take 1D float array of rewards and compute discounted reward """
+    discounted_r = np.zeros_like(r)
+    running_add = 0
+    for t in reversed(xrange(0, r.size)):
+        running_add = running_add * gamma + r[t]
+        discounted_r[t] = running_add
+    return discounted_r
+
 def load(state_dim, action_dim, architecture, activations, id):
     agent = Net(1e-2, state_dim, action_dim, architecture, activations,id)
     agent.load_network(agent.sess, agent.folder_name)
     return agent
+
+def train_agents(state_dim, action_dim, all_architecures, all_activations, nb_model):
+    for j in range (0,nb_model):
+        for i in range(0,len(all_architecures)):
+            print(str(j)+'_'+str(i))
+            #Create an agent, train it and save it
+            agent = Net(1e-2, state_dim, action_dim, all_architecures[i], all_activations[i],str(j))
+            agent.train()
+
+def noise_obs(sigma_frac, observation,fixed_noise=None):
+    # Covariance matrix
+    if (fixed_noise is not None):
+        return observation + fixed_noise
+    else:
+        comp_std = sigma_frac * np.diag(np.array([ 0.50549634,  0.29165111,  0.03309178,  0.18741141]))**2
+        return observation + np.random.multivariate_normal(np.zeros(len(comp_std)), comp_std)
+
+
+def run_simulation(voting_rule, networks, sigma_frac, total_episodes,test_alone_index,noise_type):
+    all_rewards = []
+
+    # Launch the tensorflow graph
+    with tf.Session() as sess:
+
+        # Obtain an initial observation of the environment
+        observation = env.reset()
+
+        eps_num = 0
+        reward_sum = 0
+
+        #Precompute fixed noise (noise_type= -1 or 2 or 3)
+        fixed_noise=[]
+        if(noise_type==1):
+            fixed_noise=None
+        for i in range(len(networks)):
+            if(noise_type==-1):
+                fixed_noise.append(0)
+            elif(noise_type==2):
+                if(i==0):
+                    fixed_noise.append(noise_obs(sigma_frac, 0*observation))
+                else:
+                    fixed_noise.append(fixed_noise[0])
+            elif(noise_type==3):
+                fixed_noise.append(noise_obs(sigma_frac, 0*observation))
+
+        while eps_num < 500:
+            # Render according to flag
+            if RENDER > 0:
+                env.render()
+            if(noise_type==0):
+                for i in range(len(networks)):
+                    fixed_noise.append(noise_obs(sigma_frac, 0*observation))
+
+            # Just use one agent
+            if (test_alone_index != -1) :
+                curr_obs = noise_obs(sigma_frac, observation)
+                a_dist = networks[test_alone_index].action(curr_obs)
+                a = np.random.choice(len(a_dist), 1, p = a_dist)
+                action = a[0]
+
+            # Actually vote
+            else:
+                Q_function_list= []
+                for i in range(len(networks)):
+                    curr_obs = noise_obs(sigma_frac, observation)
+                    Q_function_list.append(networks[i].action(curr_obs))
+
+                # Get the index of the action
+                action = int(voting_rule(np.array(Q_function_list)))
+
+            # Execute selected action
+            observation, reward, done, _ = env.step(action)
+
+            reward_sum += reward
+
+            if done:
+                eps_num += 1
+                print ("Reward for this episode was:",reward_sum)
+                all_rewards.append(reward_sum)
+                reward_sum = 0
+                env.reset()
+
+        env.render(close=True)
+
+    return all_rewards
+        # plt.plot(range(1, len(all_rewards) + 1), all_rewards)
+        # plt.xlim(0,total_episodes)
+        # plt.ylim(0,500)
+        # plt.savefig('plots/' + voting_rule.__name__ + '.png')
+        # plt.show()
+
+def mean_confidence_interval(data, confidence=0.95):
+    # Author: https://stackoverflow.com/questions/15033511/compute-a-confidence-interval-from-sample-data
+    a = 1.0*np.array(data)
+    n = len(a)
+    m, se = np.mean(a), scipy.stats.sem(a)
+    h = se * sp.stats.t._ppf((1+confidence)/2., n-1)
+    return m-h, m, m+h
+
 
 if __name__ == "__main__":
 
@@ -192,226 +294,58 @@ if __name__ == "__main__":
     # Clear TF graph
     tf.reset_default_graph()
 
-    TRAIN = True
-    TEST = False
-    GENERATE_GRAPH = False
+    RENDER = 0
 
-    # Create agent
-    if(TRAIN):
-        state_dim = 4
-        action_dim = 11
-        architecture = [5,5]
-        activations = [tf.nn.tanh, tf.nn.tanh]
+    # Networks parameters
+    state_dim = 4
+    action_dim = 11
+    all_architecures = [[3],[5],[10],[3,3],[5,5]]
+    all_activations = [[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh]]
+    nb_model = 2
 
-	    #Create an agent and train it
-        #agent = Net(1e-2, state_dim, action_dim, architecture, activations)
-        #agent.train(total_episodes=5000,saveModel=True)
+    #train_agents(state_dim, action_dim, all_architecures, all_activations, nb_model)
 
-	    #Load and agent and test it
-        #network = load(state_dim,action_dim,architecture,activations)
-        #network.run(total_episodes=50)
+    #============= HYPERPARMETERS ===================
+    #-1: No noise
+    #0: Global noise changing every episods
+    #1: Noise per networks changing every episods
+    #2: Global fixed noise
+    #3: Noise per network fixed
+    noise_type=1;
+    sigma_frac = 20
+    test_alone_index = -1 #index of the network to be tested alone, without voting rule, -1 for none
+    total_episodes = 100
+    #============= END HYPERPARMETERS ===================
+    all_rules = [plurality, borda, hundred_points, copeland]
 
-        all_architecures=[[3],[5],[10],[3,3],[5,5]]
-        all_activations = [[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh]]
-        nb_model=2
-        for j in range (0,nb_model):
-            for i in range(0,len(all_architecures)):
-                print(str(j)+'_'+str(i))
-                #Create an agent, train it and save it
-                agent = Net(1e-2, state_dim, action_dim, all_architecures[i], all_activations[i],str(j))
-                agent.train( total_episodes = 500, max_ep = 100,update_frequency = 5,saveModel=True)
-    elif(TEST):
-        state_dim = 4
-        action_dim = 11
-        all_architecures=[[3],[5],[10],[3,3],[5,5]]
-        all_activations = [[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh]]
-        nb_model=2
-
-        total_episodes = 200
-        test_alone_index = -1 #index of the network to be tested alone, without voting rule, -1 for none
-        # Possible voting rules: plurality, borda, hundred_points, copeland
-        voting_rule = hundred_points 
-        #0:Global noise changing every episods 1: Noise per networks changing every episods  2:Global fixed noise 3:Noise per network fixed 
-        noise_type=1 
-        noise_sigma=0.3
-
-        # Load all networks
-        networks = []
-
-        all_rewards=[]
-        #noise used for noise_type=0
-        fixed_global_noise=-1
-        fixed_network_noise=[]
-
-        for i in range(0,len(all_architecures)):
-            for j in range(0,nb_model):
-                networks.append(load(state_dim,action_dim,all_architecures[i],all_activations[i],str(j)))
-
-        # Launch the tensorflow graph
-        with tf.Session() as sess:
-
-            # Obtain an initial observation of the environment
-            observation = env.reset()
-            
-            #initialize the noise if needed 
-            if(noise_type==3):
-                fixed_global_noise= np.random.normal(0.0, noise_sigma, size=observation.shape)
-            if(noise_type==4):
-                    for i in range(0,len(all_architecures)):
-                        for j in range(0,nb_model):
-                            fixed_network_noise.append(np.random.normal(0.0, noise_sigma, size=observation.shape))
-            eps_num = 0
-            reward_sum = 0
-
-            while eps_num < total_episodes:
-                  
-                if(noise_type==0 or (noise_type==1 and test_alone_index != -1)):
-                    observation += np.random.normal(0.0, noise_sigma, size=observation.shape)
-                if(noise_type==2 or (noise_type==3 and test_alone_index != -1)):
-                    observation += fixed_global_noise
-
-                # Render according to flag
-                if RENDER > 0:
-                    env.render()
-
-                # Just use one agent
-                if (test_alone_index != -1) :
-                    a_dist = networks[test_alone_index].action(observation)
-                    a = np.random.choice(len(a_dist),1,p = a_dist)
-                    action = a[0]
-
-                # Actually vote
-                else:
-                    Q_function_list= []
-                    for i in range(len(networks)):
-                            if(noise_type==1):
-                                observation += np.random.normal(0.0, noise_sigma, size=observation.shape)
-                            if(noise_type==3):
-                                observation += fixed_network_noise[i]
-                            Q_function_list.append(networks[i].action(observation))
-
-                    # Get the index of the action
-                    action = int(voting_rule(np.array(Q_function_list)))
-
-                observation, reward, done, _ = env.step(action)
-
-                reward_sum += reward
-                if done:
-                    eps_num += 1
-                    print ("Reward for this episode was:",reward_sum)
-                    all_rewards.append(reward_sum)
-                    reward_sum = 0
-                    env.reset()
-
-            env.render(close=True)
-            x = np.linspace(1, total_episodes, num=total_episodes)
-            pylab.plot(x,all_rewards)
-            pylab.xlim(0,total_episodes)
-            pylab.ylim(0,500)
-            pylab.show()
-            #savefig('foo.png')
-    elif(GENERATE_GRAPH):
-        #Network parameters
-        state_dim = 4
-        action_dim = 11
-        all_architecures=[[3],[5],[10],[3,3],[5,5]]
-        all_activations = [[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh]]
-        nb_model=2
-
-        #hyperparameters
-        total_episodes = 200
-        #0:Global noise changing every episods 1: Noise per networks changing every episods  2:Global fixed noise 3:Noise per network fixed 
-        noise_type=-1 
-        noise_sigma=0.3
-
-        # Load all networks
-        networks = []
-        voting_rules = [plurality, borda, hundred_points, copeland] 
-        test_alone_index = -1 #index of the network to be tested alone, without voting rule, -1 for none
-        
-        foldername="graph/" +str(total_episodes)+"_"+str(noise_type)+"_"+str(noise_sigma)+'/'
-        for i in range(0,len(all_architecures)):
-            for j in range(0,nb_model):
-                networks.append(load(state_dim,action_dim,all_architecures[i],all_activations[i],str(j)))
-        for k in range(len(voting_rules)+len(networks)):
-            print(str(k)+'/'+str(len(voting_rules)+len(networks)))
-            if(k<len(voting_rules)):
-                test_alone_index=-1
-                voting_rule=voting_rules[k]
-                filename=voting_rule.__name__
-            else:
-                test_alone_index=k-len(voting_rules)
-                voting_rule=voting_rules[0]
-                filename='net'+str(test_alone_index)
-
-            #Init parameters 
-            all_rewards=[]
-            #noise used for noise_type=0
-            fixed_global_noise=-1
-            fixed_network_noise=[]
-
-            # Launch the tensorflow graph
-            with tf.Session() as sess:
-
-                # Obtain an initial observation of the environment
-                observation = env.reset()
-            
-                #initialize the noise if needed 
-                if(noise_type==2):
-                    fixed_global_noise= np.random.normal(0.0, noise_sigma, size=observation.shape)
-                if(noise_type==3):
-                        for i in range(0,len(networks)):
-                            fixed_network_noise.append(np.random.normal(0.0, noise_sigma, size=observation.shape))
-                eps_num = 0
-                reward_sum = 0
-
-                while eps_num < total_episodes:
-                  
-                    if(noise_type==0 or (noise_type==1 and test_alone_index != -1)):
-                        observation += np.random.normal(0.0, noise_sigma, size=observation.shape)
-                    if(noise_type==2 or (noise_type==3 and test_alone_index != -1)):
-                        observation += fixed_global_noise
-
-                    # Render according to flag
-                    if RENDER > 0:
-                        env.render()
-
-                    # Just use one agent
-                    if (test_alone_index != -1) :
-                        a_dist = networks[test_alone_index].action(observation)
-                        a = np.random.choice(len(a_dist),1,p = a_dist)
-                        action = a[0]
-
-                    # Actually vote
-                    else:
-                        Q_function_list= []
-                        for i in range(len(networks)):
-                            if(noise_type==1):
-                                observation += np.random.normal(0.0, noise_sigma, size=observation.shape)
-                            if(noise_type==3):
-                                observation += fixed_network_noise[i]
-                            Q_function_list.append(networks[i].action(observation))
-
-                        # Get the index of the action
-                        action = int(voting_rule(np.array(Q_function_list)))
-
-                    observation, reward, done, _ = env.step(action)
-
-                    reward_sum += reward
-                    if done:
-                        eps_num += 1
-                        print ("Reward for this episode was:",reward_sum)
-                        all_rewards.append(reward_sum)
-                        reward_sum = 0
-                        env.reset()
+    #Optimize the testing
+    if(test_alone_index>-1):
+        all_rules=[plurality]
     
-                env.render(close=True)
-                x = np.linspace(1, len(all_rewards), num=len(all_rewards))
-                fig = pylab.figure()
-                pylab.plot(x,all_rewards)
-                pylab.xlim(0,total_episodes)
-                pylab.ylim(0,500)
+    # Load all networks
+    networks = []
+    for i in range(0,len(all_architecures)):
+        for j in range(0,nb_model):
+            networks.append(load(state_dim,action_dim,all_architecures[i],all_activations[i],str(j)))
 
-                if not os.path.exists(foldername):
-                    os.makedirs(foldername)
-                fig.savefig(foldername+filename+".png")
+    # Execute simulation with each of the rules
+    list_rewards = []
+    for voting_rule in all_rules:
+        print("Rule: %s" % voting_rule.__name__)
+        list_rewards.append(run_simulation(voting_rule, networks, sigma_frac, total_episodes,test_alone_index,noise_type))
+
+    # Plot results, print confidence intervals
+    print('\nConfidence Intervals\n')
+    marker_list = ['r.', 'g*', 'bo', 'kv']
+    for ix, voting_rule in enumerate(all_rules):
+        curr_rewards = list_rewards[ix]
+        print(voting_rule.__name__ + ": " + str(mean_confidence_interval(curr_rewards)))
+        plt.plot(range(1, len(curr_rewards) + 1), curr_rewards,
+                marker = marker_list[ix][1], color = marker_list[ix][0],
+                label = voting_rule.__name__)
+        plt.xlim(1, len(curr_rewards))
+        plt.ylim(0, 510)
+        plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+           ncol=4, mode="expand", borderaxespad=0.)
+
+    plt.savefig('plots/' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + '.png')
