@@ -1,6 +1,6 @@
 # Imports
 import os
-from datetime import datetime
+import datetime
 import scipy as sp
 import scipy.stats
 import numpy as np
@@ -193,13 +193,12 @@ def train_agents(state_dim, action_dim, all_architecures, all_activations, nb_mo
             agent.train()
 
 def noise_obs(sigma_frac, observation):
-
     # Covariance matrix
     comp_std = sigma_frac * np.diag(np.array([ 0.50549634,  0.29165111,  0.03309178,  0.18741141]))**2
-    return observation + np.random.multivariate_normal(np.zeros(len(comp_std)), comp_std)
+    return observation + 0*np.random.multivariate_normal(np.zeros(len(comp_std)), comp_std)
 
 def run_simulation(voting_rule, networks, sigma_frac, total_episodes):
-    test_alone_index = -1 #index of the network to be tested alone, without voting rule, -1 for none
+    test_alone_index = 9 #index of the network to be tested alone, without voting rule, -1 for none
 
     all_rewards = []
 
@@ -223,7 +222,7 @@ def run_simulation(voting_rule, networks, sigma_frac, total_episodes):
             if (test_alone_index != -1) :
                 curr_obs = noise_obs(sigma_frac, observation)
                 a_dist = networks[test_alone_index].action(curr_obs)
-                a = np.random.choice(len(a_dist),1,p = a_dist)
+                a = np.random.choice(len(a_dist), 1, p = a_dist)
                 action = a[0]
 
             # Actually vote
@@ -301,7 +300,7 @@ if __name__ == "__main__":
             networks.append(load(state_dim,action_dim,all_architecures[i],all_activations[i],str(j)))
 
     # Execute simulation with each of the rules
-    all_rules = [plurality, borda, hundred_points, copeland]
+    all_rules = [plurality]#, borda, hundred_points, copeland]
     list_rewards = []
     for voting_rule in all_rules:
         print("Rule: %s" % voting_rule.__name__)
@@ -321,4 +320,4 @@ if __name__ == "__main__":
         plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
            ncol=4, mode="expand", borderaxespad=0.)
 
-    plt.savefig('plots/' + str(datetime.now()) + '.png')
+    plt.savefig('plots/' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + '.png')
