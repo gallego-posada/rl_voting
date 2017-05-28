@@ -4,6 +4,7 @@ import numpy as np
 
 def scores_to_profile(S):
     n, m = S.shape
+    # print(np.array([np.argsort(-S[i,:]) for i in range(n)]))
     return np.array([np.argsort(-S[i,:]) for i in range(n)])
 
 def get_winner(ctr, m):
@@ -11,23 +12,46 @@ def get_winner(ctr, m):
     # Sort candidates according to their score (uses lexicographic ordering)
     sorted_cands = ctr.most_common(m)
 
-    # Take the score of the first sorted candidate
-    max_score = sorted_cands[0][1]
+    # Add all those candidates for which we dont have a score, with score 0
+    for cand in set(range(m)) - set([pair[0] for pair in sorted_cands]):
+        sorted_cands.append((cand, 0))
 
-    # Create set of candidates with maximum score
-    winner_set = [sorted_cands[cand][0] for cand in range(len(sorted_cands)) if sorted_cands[cand][1] == max_score]
+    #print(sorted_cands)
+
+    levels = sorted(set([pair[1] for pair in sorted_cands]))
+    final_list = []
+    for level in levels:
+        level_set = [pair[0] for pair in sorted_cands if pair[1] == level]
+        random.shuffle(level_set)
+        final_list += level_set
+
+        # level_sets[i][1]
+
+
+    final_list = final_list[::-1]
+
+    #print(final_list)
+
+    return final_list
+
+    # # Take the score of the first sorted candidate
+    # max_score = sorted_cands[0][1]
+    #
+    # # Create set of candidates with maximum score
+    # winner_set = [sorted_cands[cand][0] for cand in range(len(sorted_cands)) if sorted_cands[cand][1] == max_score]
 
     # Break tie among winner_set randomly
-    return random.sample(winner_set, 1)[0]
+    #return [sorted_cands[cand][0] for cand in range(len(sorted_cands))]
+    #return random.sample(winner_set, 1)[0]
 
 def plurality(S):
 
     n, m = S.shape
 
-    candidate_list = [np.argmax(S[i,:]) for i in range(n)]
+    profile = scores_to_profile(S)
 
     # Count number of time each alternative is ranked first
-    ctr = Counter(candidate_list)
+    ctr = Counter(profile[:,0])
 
     return get_winner(ctr, m)
 
@@ -93,4 +117,7 @@ def copeland(S):
     return get_winner(ctr, m)
 
 def vote(S, voting_rule):
+    # print("8*******************")
+    # print(S)
+    # print("---------------")
     return voting_rule(S)

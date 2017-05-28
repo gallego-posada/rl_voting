@@ -173,47 +173,57 @@ def train_agents(state_dim, action_dim, all_architecures, all_activations, nb_mo
             agent = Net(1e-2, state_dim, action_dim, all_architecures[i], all_activations[i],str(j))
             agent.train(total_episodes = total_episodes)
 
-def noise_obs(sigma_frac, observation,fixed_noise = None):
+def noise_obs(sigma_frac, observation, fixed_noise = None):
     # Covariance matrix
     if (fixed_noise is not None):
         return observation + fixed_noise
     else:
-        comp_std = sigma_frac * np.diag(np.array([ 0.50549634,  0.29165111,  0.03309178,  0.18741141]))**2
-        return observation + np.random.multivariate_normal(np.zeros(len(comp_std)), comp_std)
+        cov_mat = sigma_frac * np.diag(np.array([ 0.50549634,  0.29165111,  0.03309178,  0.18741141]))**2
+        return observation + np.random.multivariate_normal(np.zeros(len(observation)), cov_mat)
 
-def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone_index, noise_type, eps_length = 999):
+def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone_index, noise_type, eps_length = 999, verbose = False):
 
     all_rewards = []
+
+    # Collect Statistics: Kendall's Tau, Spearman's Rho, Top 1 Match
+    all_stats = {}
+    for rule in set([borda, plurality, copeland, hundred_points]) - {voting_rule}:
+        all_stats[rule.__name__] = [[], [], []]
+
+    # If no noise, then take 0 variance for the noise:
+    if noise_type == -1:
+        sigma_frac = 0
 
     # Launch the tensorflow graph
     with tf.Session() as sess:
 
         # Current episode counter
         eps_num = 0
-        #Precompute fixed noise (noise_type= -1 or 2 or 3) 
-        #-1: No noise
-        #0: Global noise changing every episods, fixed every timestep
-        #1: Noise per networks changing every episods, fixed every timestep
-        #2: Global fixed noise: fixed every episod and every timestep
-        #3: Noise per network fixed: fixed every episod and every timestep
 
-        #Computing the fixed noise (fixed with respect to the episods and the time step): this is as if agents had a blurry version of the world 
-        fixed_noise = []
-        observation = env.reset()
 
-        for i in range(len(networks)):
-            if(noise_type==-1):
-                #Noise is null
-                fixed_noise.append(0)
-            elif(noise_type==2):
-                #Noise is the same for all networks
-                if(i==0):
-                    fixed_noise.append(noise_obs(sigma_frac, 0*observation))
-                else:
-                    fixed_noise.append(fixed_noise[0])
-            elif(noise_type==3):
-                #Noise is different per networks
-                fixed_noise.append(noise_obs(sigma_frac, 0*observation))
+        # #Precompute fixed noise (noise_type= -1 or 2 or 3)
+        # #-1: No noise
+        # #0: Global noise changing every episods, fixed every timestep
+        # #1: Noise per networks changing every episods, fixed every timestep
+        # #2: Global fixed noise: fixed every episod and every timestep
+        # #3: Noise per network fixed: fixed every episod and every timestep
+        # #Computing the fixed noise (fixed with respect to the episods and the time step): this is as if agents had a blurry version of the world
+        # fixed_noise = []
+        # observation = env.reset()
+        #
+        # for i in range(len(networks)):
+        #     if(noise_type==-1):
+        #         #Noise is null
+        #         fixed_noise.append(0)
+        #     elif(noise_type==2):
+        #         #Noise is the same for all networks
+        #         if(i==0):
+        #             fixed_noise.append(noise_obs(sigma_frac, 0*observation))
+        #         else:
+        #             fixed_noise.append(fixed_noise[0])
+        #     elif(noise_type==3):
+        #         #Noise is different per networks
+        #         fixed_noise.append(noise_obs(sigma_frac, 0*observation))
 
 
         while eps_num < total_episodes:
@@ -223,18 +233,20 @@ def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone
 
             # Accumulates the reward for the current episode
             reward_sum = 0
-        
-            #Computing the noise that changes every episod (but that is the same for every timestep)
-            if (noise_type == 0):
-                #Noise is the same for all networks
-                if(i==0):
-                    fixed_noise.append(noise_obs(sigma_frac, 0*observation))
-                else:
-                    fixed_noise.append(fixed_noise[0])
-            if (noise_type == 1):
-                #Noise is different per networks
-                for i in range(len(networks)):
-                    fixed_noise.append(noise_obs(sigma_frac, 0*observation))
+
+            # #Computing the noise that changes every episod (but that is the same for every timestep)
+            # if (noise_type == 0):
+            #     #Noise is the same for all networks
+            #     if(i==0):
+            #         fixed_noise.append(noise_obs(sigma_frac, 0*observation))
+            #     else:
+            #         fixed_noise.append(fixed_noise[0])
+            #
+            # if (noise_type == 1):
+            #     #Noise is different per networks
+            #     for i in range(len(networks)):
+            #         fixed_noise.append(noise_obs(sigma_frac, 0*observation))
+
             for time_step in range(eps_length):
 
                 # Render according to flag
@@ -243,7 +255,7 @@ def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone
 
                 # Just use one agent
                 if (test_alone_index != -1) :
-                    curr_obs = noise_obs(sigma_frac, observation,fixed_noise[0])
+                    curr_obs = noise_obs(sigma_frac, observation) #,fixed_noise[0])
                     a_dist = networks[test_alone_index].action(curr_obs)
                     a = np.random.choice(len(a_dist), 1, p = a_dist)
                     action = a[0]
@@ -251,11 +263,22 @@ def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone
                 else:
                     Q_function_list= []
                     for i in range(len(networks)):
-                        curr_obs = noise_obs(sigma_frac, observation,fixed_noise[i])
-                        Q_function_list.append(networks[i].action(curr_obs))
+                        curr_obs = noise_obs(sigma_frac, observation) #,fixed_noise[i])
+                        ballot = networks[i].action(curr_obs)
+                        Q_function_list.append(ballot)
 
                     # Get the index of the action
-                    action = int(voting_rule(np.array(Q_function_list)))
+                    social_ranking = vote(np.array(Q_function_list), voting_rule)
+                    action = int(social_ranking[0])
+
+                    # Calculate Kendall's Tau
+                    for rule in set([borda, plurality, copeland, hundred_points]) - {voting_rule}:
+                        comparison_ranking = vote(np.array(Q_function_list), rule)
+                        tau, _ = scipy.stats.kendalltau(social_ranking, comparison_ranking)
+                        all_stats[rule.__name__][0].append(tau)
+                        rho, _ = scipy.stats.spearmanr(social_ranking, comparison_ranking)
+                        all_stats[rule.__name__][1].append(rho)
+                        all_stats[rule.__name__][2].append(1. * (action == int(comparison_ranking[0])))
 
                 # Execute selected action
                 observation, reward, done, _ = env.step(action)
@@ -264,13 +287,16 @@ def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone
 
                 if done or (time_step == eps_length-1):
                     eps_num += 1
-                    print ("Reward for this episode was:",reward_sum)
+                    if verbose:
+                        print ("Reward for this episode was:",reward_sum)
                     all_rewards.append(reward_sum)
+                    observation = env.reset()
+                    reward_sum = 0
                     break
 
             env.render(close=True)
 
-    return all_rewards
+    return all_rewards, all_stats
 
 def mean_confidence_interval(data, confidence=0.95):
     # Author: https://stackoverflow.com/questions/15033511/compute-a-confidence-interval-from-sample-data
@@ -291,8 +317,8 @@ if __name__ == "__main__":
     tf.reset_default_graph()
 
     RENDER = 0
-    TRAIN = True
-    TEST = False
+    TRAIN = False
+    TEST = True
 
     # Networks parameters
     state_dim = 4
@@ -312,42 +338,67 @@ if __name__ == "__main__":
         #1: Noise per networks changing every episods
         #2: Global fixed noise
         #3: Noise per network fixed
-        noise_type = 3
+        noise_type = -1
         sigma_frac = 20
-        test_alone_index = 8 #index of the network to be tested alone from 0 to 9 , without voting rule, -1 for all networks that vote 
-        total_episodes = 3 #default 100
-        all_rules = [plurality, borda, hundred_points, copeland]
-        eps_len=200 #default 999
+        #test_alone_index
+        total_episodes = 100 #default 100
+        all_rules = [borda, plurality, copeland, hundred_points]
+        eps_len = 500 #default 999
         # ============= END HYPERPARMETERS ===================
 
-        # Optimize the testing
-        if (test_alone_index > -1) :
-            all_rules = [plurality]
+        for test_alone_index in range(-1,0): #index of the network to be tested alone from 0 to 9 , without voting rule, -1 for all networks that vote
 
-        # Load all networks
-        networks = []
-        for i in range(0,len(all_architecures)):
-            for j in range(0,nb_model):
-                networks.append(load(state_dim,action_dim,all_architecures[i],all_activations[i],str(j)))
+            # Optimize the testing
+            if (test_alone_index > -1) :
+                print("Testing Network: %d\n" % test_alone_index)
+                all_rules = [plurality]
+            else:
+                print("Testing Ensemble\n")
 
-        # Execute simulation with each of the rules
-        list_rewards = []
-        for voting_rule in all_rules:
-            print("Rule: %s" % voting_rule.__name__)
-            list_rewards.append(run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone_index, noise_type, eps_length = eps_len))
+            # Load all networks
+            networks = []
+            for i in range(0,len(all_architecures)):
+                for j in range(0,nb_model):
+                    networks.append(load(state_dim,action_dim,all_architecures[i],all_activations[i],str(j)))
 
-        # Plot results, print confidence intervals
-        print('\nConfidence Intervals\n')
-        marker_list = ['r.', 'g*', 'bo', 'kv']
-        for ix, voting_rule in enumerate(all_rules):
-            curr_rewards = list_rewards[ix]
-            print(voting_rule.__name__ + ": " + str(mean_confidence_interval(curr_rewards)))
-            plt.plot(range(1, len(curr_rewards) + 1), curr_rewards,
-                    marker = marker_list[ix][1], color = marker_list[ix][0],
-                    label = voting_rule.__name__)
-            plt.xlim(1, len(curr_rewards))
-            plt.ylim(0, 510)
-            plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
-               ncol=4, mode="expand", borderaxespad=0.)
+            # Execute simulation with each of the rules
+            list_rewards = []
+            for voting_rule in all_rules:
+                print("\nRule: %s" % voting_rule.__name__)
+                l_rwds, dict_stats = run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone_index, noise_type, eps_length = eps_len)
+                list_rewards.append(l_rwds)
+                for rule in set([borda, plurality, copeland, hundred_points]) - {voting_rule}:
+                    print("\t%s - Tau: %f" % (rule.__name__, np.mean(dict_stats[rule.__name__][0])))
+                    print("\t%s - Rho: %f" % (rule.__name__, np.mean(dict_stats[rule.__name__][1])))
+                    print("\t%s - Top 1 Match: %f" % (rule.__name__, np.mean(dict_stats[rule.__name__][2])))
+                #print(l_stats)
 
-        plt.savefig('plots/' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + '.png')
+            # Run t tests for difference of means.
+            print('\nStatistical Tests\n')
+            # H0 means equal means, if we reject H0 we are concluding that the
+            # two samples come from populations with different means, i.e., the
+            # two rules have significantly different average performance
+            for ix, rule_1 in enumerate(all_rules):
+                for jx, rule_2 in enumerate(all_rules):
+                    if ix < jx:
+                        t, p = scipy.stats.ttest_ind(list_rewards[ix], list_rewards[jx], equal_var=False)
+                        if p < 0.05:
+                            print("Reject H0 for %s vs %s - p-value: %f" % (rule_1.__name__, rule_2.__name__, p))
+                        else:
+                            print("Can NOT Reject H0 for %s vs %s - p-value: %f" % (rule_1.__name__, rule_2.__name__, p))
+
+            # Plot results, print confidence intervals
+            print('\nConfidence Intervals\n')
+            marker_list = ['ro', 'g*', 'bv', 'k.']
+            for ix, voting_rule in enumerate(all_rules):
+                curr_rewards = list_rewards[ix]
+                print(voting_rule.__name__ + ": " + str(mean_confidence_interval(curr_rewards)))
+                plt.plot(range(1, len(curr_rewards) + 1), list_rewards[ix],
+                        marker = marker_list[ix][1], color = marker_list[ix][0],
+                        label = voting_rule.__name__)
+                plt.xlim(1, len(curr_rewards))
+                #plt.ylim(0, 510)
+                plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+                   ncol=4, mode="expand", borderaxespad=0.)
+
+            plt.savefig('plots/' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + '.png')

@@ -1,0 +1,60 @@
+Rule: borda
+	hundred_points - Tau: 0.237468
+	hundred_points - Rho: 0.310599
+	hundred_points - Top 1 Match: 0.312651
+	plurality - Tau: 0.116404
+	plurality - Rho: 0.158726
+	plurality - Top 1 Match: 0.292772
+	copeland - Tau: 0.443064
+	copeland - Rho: 0.541112
+	copeland - Top 1 Match: 0.737291
+
+Rule: plurality
+	borda - Tau: 0.134167
+	borda - Rho: 0.184029
+	borda - Top 1 Match: 0.317572
+	copeland - Tau: 0.138374
+	copeland - Rho: 0.189425
+	copeland - Top 1 Match: 0.336213
+	hundred_points - Tau: 0.155725
+	hundred_points - Rho: 0.209533
+	hundred_points - Top 1 Match: 0.490793
+
+Rule: copeland
+	borda - Tau: 0.440045
+	borda - Rho: 0.538109
+	borda - Top 1 Match: 0.738009
+	plurality - Tau: 0.116129
+	plurality - Rho: 0.157666
+	plurality - Top 1 Match: 0.315192
+	hundred_points - Tau: 0.229740
+	hundred_points - Rho: 0.301421
+	hundred_points - Top 1 Match: 0.335079
+
+Rule: hundred_points
+	borda - Tau: 0.268837
+	borda - Rho: 0.350094
+	borda - Top 1 Match: 0.340650
+	plurality - Tau: 0.149091
+	plurality - Rho: 0.201723
+	plurality - Top 1 Match: 0.481300
+	copeland - Tau: 0.265768
+	copeland - Rho: 0.345239
+	copeland - Top 1 Match: 0.353436
+
+Statistical Tests
+
+Reject H0 for borda vs plurality - p-value: 0.000000
+Can NOT Reject H0 for borda vs copeland - p-value: 0.345333
+Reject H0 for borda vs hundred_points - p-value: 0.000000
+Reject H0 for plurality vs copeland - p-value: 0.000000
+Reject H0 for plurality vs hundred_points - p-value: 0.000000
+Reject H0 for copeland vs hundred_points - p-value: 0.000000
+
+Confidence Intervals
+
+borda: (205.21569640903408, 223.86000000000001, 242.50430359096595)
+plurality: (40.00511565945633, 43.990000000000002, 47.974884340543674)
+copeland: (216.99837725445096, 236.84, 256.68162274554902)
+hundred_points: (85.524244023170382, 93.849999999999994, 102.17575597682961)
+

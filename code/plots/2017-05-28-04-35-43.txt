@@ -1,0 +1,16 @@
+Statistical Tests
+
+Reject H0 for borda vs plurality - p-value: 0.000000
+Can NOT Reject H0 for borda vs copeland - p-value: 0.107307
+Reject H0 for borda vs hundred_points - p-value: 0.000000
+Reject H0 for plurality vs copeland - p-value: 0.000000
+Can NOT Reject H0 for plurality vs hundred_points - p-value: 0.591539
+Reject H0 for copeland vs hundred_points - p-value: 0.000000
+
+Confidence Intervals
+
+borda: (327.62413273232187, 349.68000000000001, 371.73586726767815)
+plurality: (189.00355091498704, 198.59999999999999, 208.19644908501294)
+copeland: (300.618047599433, 323.80000000000001, 346.98195240056702)
+hundred_points: (187.30377035998822, 195.25999999999999, 203.21622964001176)
+
