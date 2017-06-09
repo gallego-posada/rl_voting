@@ -1,5 +1,6 @@
 # Imports
 import os
+import sys
 import datetime
 import scipy as sp
 import scipy.stats
@@ -200,52 +201,13 @@ def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone
         # Current episode counter
         eps_num = 0
 
-
-        # #Precompute fixed noise (noise_type= -1 or 2 or 3)
-        # #-1: No noise
-        # #0: Global noise changing every episods, fixed every timestep
-        # #1: Noise per networks changing every episods, fixed every timestep
-        # #2: Global fixed noise: fixed every episod and every timestep
-        # #3: Noise per network fixed: fixed every episod and every timestep
-        # #Computing the fixed noise (fixed with respect to the episods and the time step): this is as if agents had a blurry version of the world
-        # fixed_noise = []
-        # observation = env.reset()
-        #
-        # for i in range(len(networks)):
-        #     if(noise_type==-1):
-        #         #Noise is null
-        #         fixed_noise.append(0)
-        #     elif(noise_type==2):
-        #         #Noise is the same for all networks
-        #         if(i==0):
-        #             fixed_noise.append(noise_obs(sigma_frac, 0*observation))
-        #         else:
-        #             fixed_noise.append(fixed_noise[0])
-        #     elif(noise_type==3):
-        #         #Noise is different per networks
-        #         fixed_noise.append(noise_obs(sigma_frac, 0*observation))
-
-
-        while eps_num < total_episodes:
+            while eps_num < total_episodes:
 
             # Obtain an initial observation of the environment
             observation = env.reset()
 
             # Accumulates the reward for the current episode
             reward_sum = 0
-
-            # #Computing the noise that changes every episod (but that is the same for every timestep)
-            # if (noise_type == 0):
-            #     #Noise is the same for all networks
-            #     if(i==0):
-            #         fixed_noise.append(noise_obs(sigma_frac, 0*observation))
-            #     else:
-            #         fixed_noise.append(fixed_noise[0])
-            #
-            # if (noise_type == 1):
-            #     #Noise is different per networks
-            #     for i in range(len(networks)):
-            #         fixed_noise.append(noise_obs(sigma_frac, 0*observation))
 
             for time_step in range(eps_length):
 
@@ -270,6 +232,7 @@ def run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone
                     # Get the index of the action
                     social_ranking = vote(np.array(Q_function_list), voting_rule)
                     action = int(social_ranking[0])
+
 
                     # Calculate Kendall's Tau
                     for rule in set([borda, plurality, copeland, hundred_points]) - {voting_rule}:
@@ -309,6 +272,9 @@ def mean_confidence_interval(data, confidence=0.95):
 
 if __name__ == "__main__":
 
+    save_file_name = 'results/' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    sys.stdout = open(save_file_name + ".txt", 'w')
+
     # Definition of the enviroment
     env = gym.make('CartPole-v1')
     gamma = 0.99
@@ -325,7 +291,7 @@ if __name__ == "__main__":
     action_dim = 11
     all_architecures = [[3],[5],[10],[3,3],[5,5]]
     all_activations = [[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh],[tf.nn.tanh, tf.nn.tanh]]
-    nb_model = 2
+    nb_model = 1
 
     if TRAIN:
         train_agents(state_dim, action_dim, all_architecures, all_activations, nb_model, total_episodes = 1000)
@@ -334,71 +300,113 @@ if __name__ == "__main__":
 
         # ============= HYPERPARMETERS ===================
         #-1: No noise
-        #0: Global noise changing every episods
-        #1: Noise per networks changing every episods
-        #2: Global fixed noise
-        #3: Noise per network fixed
-        noise_type = -1
+        #1: Noise per networks changing every time step
+        noise_type = 1
         sigma_frac = 20
         #test_alone_index
-        total_episodes = 100 #default 100
+        total_episodes = 100  #default 100
         all_rules = [borda, plurality, copeland, hundred_points]
-        eps_len = 500 #default 999
+        eps_len = 500 #default 500
         # ============= END HYPERPARMETERS ===================
 
-        for test_alone_index in range(-1,0): #index of the network to be tested alone from 0 to 9 , without voting rule, -1 for all networks that vote
+        # Load all networks
+        networks = []
+        for i in range(0,len(all_architecures)):
+            for j in range(0,nb_model):
+                networks.append(load(state_dim,action_dim,all_architecures[i],all_activations[i],str(j)))
+
+        # Storage list for rewards
+        list_rewards = []
+
+        # Which networks to use?
+        # Index of the network to be tested alone from 0 to 9 , without voting rule, -1 for all networks that vote
+        ix_list = [-1] #list(range(0,5))
+        for test_alone_index in ix_list:
 
             # Optimize the testing
             if (test_alone_index > -1) :
                 print("Testing Network: %d\n" % test_alone_index)
                 all_rules = [plurality]
+                verbose = False
             else:
                 print("Testing Ensemble\n")
-
-            # Load all networks
-            networks = []
-            for i in range(0,len(all_architecures)):
-                for j in range(0,nb_model):
-                    networks.append(load(state_dim,action_dim,all_architecures[i],all_activations[i],str(j)))
+                verbose = False
 
             # Execute simulation with each of the rules
-            list_rewards = []
             for voting_rule in all_rules:
-                print("\nRule: %s" % voting_rule.__name__)
-                l_rwds, dict_stats = run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone_index, noise_type, eps_length = eps_len)
+                # If enseble, log which rule we are at
+                if (test_alone_index == -1):
+                    print("\nRule: %s" % voting_rule.__name__)
+                l_rwds, dict_stats = run_simulation(voting_rule, networks, sigma_frac, total_episodes, test_alone_index, noise_type, eps_length = eps_len, verbose = verbose)
                 list_rewards.append(l_rwds)
-                for rule in set([borda, plurality, copeland, hundred_points]) - {voting_rule}:
-                    print("\t%s - Tau: %f" % (rule.__name__, np.mean(dict_stats[rule.__name__][0])))
-                    print("\t%s - Rho: %f" % (rule.__name__, np.mean(dict_stats[rule.__name__][1])))
-                    print("\t%s - Top 1 Match: %f" % (rule.__name__, np.mean(dict_stats[rule.__name__][2])))
-                #print(l_stats)
 
-            # Run t tests for difference of means.
-            print('\nStatistical Tests\n')
-            # H0 means equal means, if we reject H0 we are concluding that the
-            # two samples come from populations with different means, i.e., the
-            # two rules have significantly different average performance
-            for ix, rule_1 in enumerate(all_rules):
-                for jx, rule_2 in enumerate(all_rules):
-                    if ix < jx:
-                        t, p = scipy.stats.ttest_ind(list_rewards[ix], list_rewards[jx], equal_var=False)
-                        if p < 0.05:
-                            print("Reject H0 for %s vs %s - p-value: %f" % (rule_1.__name__, rule_2.__name__, p))
-                        else:
-                            print("Can NOT Reject H0 for %s vs %s - p-value: %f" % (rule_1.__name__, rule_2.__name__, p))
+                # If ensemble, calculate correlation between rankings
+                if (test_alone_index == -1):
+                    for rule in set([borda, plurality, copeland, hundred_points]) - {voting_rule}:
+                        print("\t%s - Tau: %f" % (rule.__name__, np.mean(dict_stats[rule.__name__][0])))
+                        print("\t%s - Rho: %f" % (rule.__name__, np.mean(dict_stats[rule.__name__][1])))
+                        print("\t%s - Top 1 Match: %f" % (rule.__name__, np.mean(dict_stats[rule.__name__][2])))
 
-            # Plot results, print confidence intervals
-            print('\nConfidence Intervals\n')
-            marker_list = ['ro', 'g*', 'bv', 'k.']
-            for ix, voting_rule in enumerate(all_rules):
-                curr_rewards = list_rewards[ix]
-                print(voting_rule.__name__ + ": " + str(mean_confidence_interval(curr_rewards)))
-                plt.plot(range(1, len(curr_rewards) + 1), list_rewards[ix],
-                        marker = marker_list[ix][1], color = marker_list[ix][0],
-                        label = voting_rule.__name__)
+
+            # If ensemble, Run t tests for difference of means.
+            if (test_alone_index == -1):
+
+                print('\nStatistical Tests\n')
+                # H0 means equal means, if we reject H0 we are concluding that the
+                # two samples come from populations with different means, i.e., the
+                # two rules have significantly different average performance
+                for ix, rule_1 in enumerate(all_rules):
+                    for jx, rule_2 in enumerate(all_rules):
+                        if ix < jx:
+                            t, p = scipy.stats.ttest_ind(list_rewards[ix], list_rewards[jx], equal_var=False)
+                            if p < 0.05:
+                                print("Reject H0 for %s vs %s - p-value: %f" % (rule_1.__name__, rule_2.__name__, p))
+                            else:
+                                print("Can NOT Reject H0 for %s vs %s - p-value: %f" % (rule_1.__name__, rule_2.__name__, p))
+
+            # If Ensemble
+            if (test_alone_index == -1) :
+                # Plot results, print confidence intervals
+                print('\nConfidence Intervals\n')
+                marker_list = ['ro', 'g*', 'bv', 'k.']
+
+                plt.figure(figsize=(6,5))
+
+                for ix, voting_rule in enumerate(all_rules):
+                    curr_rewards = list_rewards[ix]
+                    print(voting_rule.__name__ + ": " + str(mean_confidence_interval(curr_rewards)))
+                    plt.plot(range(1, len(curr_rewards) + 1), np.cumsum(list_rewards[ix])/1000,
+                            marker = marker_list[ix][1], color = marker_list[ix][0],
+                            label = voting_rule.__name__)
+
                 plt.xlim(1, len(curr_rewards))
+                plt.ylabel('Cumulative Reward')
+                plt.xlabel('Episode')
                 #plt.ylim(0, 510)
-                plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
-                   ncol=4, mode="expand", borderaxespad=0.)
+                plt.legend(bbox_to_anchor=(0., 1.006, 1., .101), loc=3,
+                   ncol=4, mode="expand", borderaxespad=0., prop={'size':10})
+                plt.savefig( save_file_name + '.png')
 
-            plt.savefig('plots/' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + '.png')
+            # If individial networks
+            elif test_alone_index == max(ix_list):
+                # Plot results, print confidence intervals
+                print('\nConfidence Intervals\n')
+                marker_list = ['ro', 'g*', 'bv', 'm.', 'cs', 'gd', 'r1', 'b2', 'ch', 'k+']
+
+                plt.figure(figsize=(6,5))
+
+                for ix in ix_list:
+                    print(ix)
+                    curr_rewards = list_rewards[ix]
+                    print("NN " + str(ix) + ": " + str(mean_confidence_interval(curr_rewards)))
+
+                    plt.plot(range(1, len(curr_rewards) + 1), np.cumsum(list_rewards[ix])/1000,
+                            marker = marker_list[ix][1], color = marker_list[ix][0],
+                            label = "NN " + str(ix))
+
+                plt.legend(bbox_to_anchor=(0., 1.006, 1., .101), loc=3,
+                   ncol=5, mode="expand", borderaxespad=0., prop={'size':10})
+                plt.xlim(1, len(curr_rewards))
+                plt.ylabel('Cumulative Reward')
+                plt.xlabel('Episode')
+                plt.savefig( save_file_name + '.png')
